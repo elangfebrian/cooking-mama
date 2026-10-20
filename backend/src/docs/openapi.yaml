@@ -1,0 +1,319 @@
+openapi: 3.0.3
+info:
+  title: Cooking Mama API
+  version: 1.0.0
+  description: |
+    REST API untuk aplikasi Cooking Mama (clone Cookpad).
+    Semua respons berformat `{ success, data, meta? }` atau `{ success:false, error:{ code, message, details? } }`.
+    Autentikasi memakai JWT: kirim header `Authorization: Bearer <token>`.
+servers:
+  - url: http://localhost:3000/api
+    description: Lokal (Flutter Web / iOS Simulator)
+  - url: http://10.0.2.2:3000/api
+    description: Emulator Android
+tags:
+  - { name: Auth }
+  - { name: Recipes }
+  - { name: Comments }
+  - { name: Favorites }
+  - { name: Categories }
+  - { name: Users }
+  - { name: Uploads }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+  responses:
+    Unauthorized:
+      description: Token tidak ada / tidak valid / kedaluwarsa
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Bukan pemilik data
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Data tidak ditemukan
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Validation:
+      description: Data tidak valid (422)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            details:
+              type: array
+              items: { type: object, properties: { field: { type: string }, message: { type: string } } }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        avatar_url: { type: string }
+        bio: { type: string }
+        created_at: { type: string, format: date-time }
+    AuthResult:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+    Comment:
+      type: object
+      properties:
+        id: { type: integer }
+        recipe_id: { type: integer }
+        user_id: { type: integer }
+        user: { type: string }
+        text: { type: string }
+        created_at: { type: string, format: date-time }
+    Recipe:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        image_url: { type: string }
+        author: { type: string }
+        author_id: { type: integer }
+        category: { type: string, example: Nasi }
+        cook_minutes: { type: integer }
+        servings: { type: integer }
+        ingredients: { type: array, items: { type: string } }
+        steps: { type: array, items: { type: string } }
+        comments: { type: array, items: { $ref: '#/components/schemas/Comment' } }
+        is_favorite: { type: boolean, description: Selalu false untuk tamu }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    RecipeInput:
+      type: object
+      required: [title, category, ingredients, steps]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 150 }
+        description: { type: string, maxLength: 2000 }
+        category: { type: string, description: 'Nama kategori, mis. "Ayam"' }
+        cook_minutes: { type: integer, minimum: 0 }
+        servings: { type: integer, minimum: 1 }
+        image_url: { type: string, description: 'URL dari POST /uploads/image atau URL eksternal' }
+        ingredients: { type: array, minItems: 1, items: { type: string } }
+        steps: { type: array, minItems: 1, items: { type: string } }
+paths:
+  /health:
+    get:
+      summary: Cek server hidup
+      responses: { '200': { description: OK } }
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Daftar akun baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+      responses:
+        '201': { description: Berhasil, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
+        '409': { description: Email sudah terdaftar }
+        '422': { $ref: '#/components/responses/Validation' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { description: Berhasil, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
+        '401': { description: Email atau password salah }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Data akun yang sedang login
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /categories:
+    get:
+      tags: [Categories]
+      summary: Daftar kategori
+      responses: { '200': { description: OK } }
+  /recipes:
+    get:
+      tags: [Recipes]
+      summary: Daftar resep (terbaru dulu), dengan pencarian dan filter
+      description: Bila token valid dikirim, `is_favorite` terisi sesuai akun.
+      security: [{}, { bearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: Cari di judul dan bahan }
+        - { name: category, in: query, schema: { type: string }, description: 'Nama kategori; "Semua" = tanpa filter' }
+        - { name: author_id, in: query, schema: { type: integer } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        '200':
+          description: OK (meta berisi page, limit, total, total_pages)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/Recipe' } }
+                  meta: { type: object }
+    post:
+      tags: [Recipes]
+      summary: Tulis resep baru
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RecipeInput' } } }
+      responses:
+        '201': { description: Dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/Recipe' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /recipes/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Recipes]
+      summary: Detail resep
+      security: [{}, { bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Recipe' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Recipes]
+      summary: Ubah resep (hanya pemilik; semua field opsional)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RecipeInput' } } }
+      responses:
+        '200': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Recipes]
+      summary: Hapus resep (hanya pemilik)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /recipes/{id}/comments:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Comments]
+      summary: Komentar sebuah resep (terbaru dulu)
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Comments]
+      summary: Kirim komentar
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 1000 } } }
+      responses:
+        '201': { description: Dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/Comment' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /comments/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    delete:
+      tags: [Comments]
+      summary: Hapus komentar (hanya pemilik)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /favorites:
+    get:
+      tags: [Favorites]
+      summary: Resep yang disimpan akun ini
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK } }
+  /recipes/{id}/favorite:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    put:
+      tags: [Favorites]
+      summary: Simpan resep (idempotent)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK }, '404': { $ref: '#/components/responses/NotFound' } }
+    delete:
+      tags: [Favorites]
+      summary: Hapus dari tersimpan (idempotent)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK } }
+  /users/me:
+    patch:
+      tags: [Users]
+      summary: Ubah profil sendiri (name, bio, avatar_url)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK } }
+  /users/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Users]
+      summary: Profil publik + statistik (resep, tersimpan, pengikut)
+      responses: { '200': { description: OK }, '404': { $ref: '#/components/responses/NotFound' } }
+  /users/{id}/follow:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    put:
+      tags: [Users]
+      summary: Ikuti pengguna
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK } }
+    delete:
+      tags: [Users]
+      summary: Berhenti mengikuti
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK } }
+  /uploads/image:
+    post:
+      tags: [Uploads]
+      summary: Unggah foto masakan (JPG/PNG/WEBP, maks 5 MB)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo: { type: string, format: binary }
+      responses:
+        '201':
+          description: URL foto yang dapat dipakai sebagai `image_url` resep
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: object, properties: { url: { type: string } } }
