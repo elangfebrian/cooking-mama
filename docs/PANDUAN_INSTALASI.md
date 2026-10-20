@@ -172,3 +172,4 @@ Setiap kali ingin menjalankan aplikasi:
 1. Pastikan PostgreSQL berjalan.
 2. Terminal 1: `cd backend` lalu `npm run dev`
 3. Terminal 2: `cd frontend` lalu `flutter run -d chrome`
+test 123
