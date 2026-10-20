@@ -1,0 +1,20 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# Rahasia & dependensi
+.env
+**/.env
+node_modules/
+
+# Build / cache
+.dart_tool/
+build/
+*.log
+
+# Upload pengguna (folder dijaga lewat .gitkeep)
+backend/uploads/*
+!backend/uploads/.gitkeep
