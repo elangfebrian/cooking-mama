@@ -116,3 +116,4 @@ curl -s -X POST localhost:3000/api/recipes -H "Authorization: Bearer $TOKEN" -H 
 - Foto: `POST /uploads/image` menyimpan file di `uploads/` dan mengembalikan URL absolut dari host yang dipakai
   klien (emulator Android → `http://10.0.2.2:3000/uploads/...`). Set `PUBLIC_BASE_URL` bila di belakang proxy.
 - Hanya satu jenis tamu/pengguna; belum ada role admin, rate limiting, atau refresh token.
+<!-- Backend REST API developed by Jiddan Ibnu Ali (4jeeh) -->
